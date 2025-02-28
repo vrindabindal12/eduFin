@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import './App.css';
 
 // Vite uses VITE_ prefix for environment variables
 const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY;
+const NEWS_API_KEY = import.meta.env.VITE_NEWS_API_KEY;
 
 const initialVideos = [
   { title: "Stock Market for Beginners", videoId: "p7HKvqRI_Bo" },
@@ -12,15 +13,6 @@ const initialVideos = [
   { title: "Cryptocurrency Investing", videoId: "iS2-SfolkJc" },
   { title: "Understanding Bonds", videoId: "IoV_ggmQ4nk" },
   { title: "Ethereum and Smart Contracts", videoId: "pWGLtjG-F5c" },
-];
-
-const blogs = [
-  { title: "Stock Market vs. Cryptocurrency: Where Should You Invest?", description: "A comparison of traditional stocks and crypto investments." },
-  { title: "Mutual Funds for Beginners: A Step-by-Step Guide", description: "Learn the basics of mutual funds and how to start investing." },
-  { title: "How to Diversify Your Portfolio", description: "Tips to reduce risk and maximize returns." },
-  { title: "The Rise of ESG Investing", description: "Explore sustainable investing trends." },
-  { title: "Understanding Market Volatility", description: "What causes market ups and downs?" },
-  { title: "Retirement Planning with Index Funds", description: "A simple strategy for long-term growth." },
 ];
 
 const trendingNews = [
@@ -35,9 +27,12 @@ function App() {
   const [videos, setVideos] = useState(initialVideos);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [blogQuery, setBlogQuery] = useState('');
+  const [blogs, setBlogs] = useState([]);
+  const [blogLoading, setBlogLoading] = useState(false);
+  const [blogError, setBlogError] = useState('');
 
-  console.log('API Key:', YOUTUBE_API_KEY); // Log to verify key
-
+  // Fetch YouTube videos
   const fetchVideos = async () => {
     if (!query) {
       setError('Please enter a search term.');
@@ -55,14 +50,12 @@ function App() {
       const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(
         query
       )}&type=video&maxResults=6&key=${YOUTUBE_API_KEY}`;
-      console.log('Fetching from URL:', url);
       const response = await fetch(url);
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`HTTP error! Status: ${response.status}, Message: ${errorText}`);
       }
       const data = await response.json();
-      console.log('API Response:', data);
       if (!data.items || data.items.length === 0) {
         throw new Error('No videos found for this query.');
       }
@@ -80,9 +73,57 @@ function App() {
     }
   };
 
-  const handleReadMore = (title) => {
-    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(title)}`;
-    window.open(searchUrl, '_blank');
+  // Fetch blogs from News API
+  const fetchBlogs = async () => {
+    if (!NEWS_API_KEY) {
+      setBlogError('Missing News API key. Please configure it in .env.');
+      return;
+    }
+
+    setBlogLoading(true);
+    setBlogError('');
+
+    try {
+      const searchTerm = blogQuery || 'finance investment'; // Default to general finance if no query
+      const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(
+        searchTerm
+      )}&language=en&sortBy=relevancy&apiKey=${NEWS_API_KEY}&pageSize=6`;
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! Status: ${response.status}, Message: ${errorText}`);
+      }
+      
+      const data = await response.json();
+      if (!data.articles || data.articles.length === 0) {
+        throw new Error('No articles found for this query.');
+      }
+
+      const formattedBlogs = data.articles.map(article => ({
+        title: article.title,
+        description: article.description || 'No description available',
+        url: article.url
+      }));
+      
+      setBlogs(formattedBlogs);
+    } catch (err) {
+      console.error('Blog Fetch Error:', err.message);
+      setBlogError(`Failed to fetch blogs: ${err.message}. Please try again.`);
+      setBlogs([]);
+    } finally {
+      setBlogLoading(false);
+    }
+  };
+
+  // Fetch initial blogs on component mount
+  useEffect(() => {
+    fetchBlogs();
+  }, []);
+
+  // Handle blog search
+  const handleBlogSearch = () => {
+    fetchBlogs();
   };
 
   return (
@@ -158,31 +199,64 @@ function App() {
       >
         Financial Blogs
       </motion.h2>
+
+      <motion.div
+        className="search-container"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 1.6, duration: 0.8 }}
+      >
+        <input
+          type="text"
+          value={blogQuery}
+          onChange={(e) => setBlogQuery(e.target.value)}
+          placeholder="Search financial blog topics..."
+          className="search-input"
+        />
+        <motion.button
+          onClick={handleBlogSearch}
+          className="search-button"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+        >
+          Search
+        </motion.button>
+      </motion.div>
+
+      {blogLoading && <p className="loading">Loading blogs...</p>}
+      {blogError && <p className="error">{blogError}</p>}
+
       <motion.div
         className="blog-grid"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 1.8, duration: 0.8 }}
       >
-        {blogs.map((blog, index) => (
-          <motion.div
-            key={index}
-            className="blog-card"
-            whileHover={{ scale: 1.05 }}
-            initial={{ y: 50, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 1.8 + index * 0.2, duration: 0.5 }}
-          >
-            <h3 className="blog-title">{blog.title}</h3>
-            <p className="blog-description">{blog.description}</p>
-            <button
-              onClick={() => handleReadMore(blog.title)}
-              className="read-more-button"
+        {blogs.length > 0 ? (
+          blogs.map((blog, index) => (
+            <motion.div
+              key={index}
+              className="blog-card"
+              whileHover={{ scale: 1.05 }}
+              initial={{ y: 50, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 1.8 + index * 0.2, duration: 0.5 }}
             >
-              Read More
-            </button>
-          </motion.div>
-        ))}
+              <h3 className="blog-title">{blog.title}</h3>
+              <p className="blog-description">{blog.description}</p>
+              <a
+                href={blog.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="read-more-button"
+              >
+                Read More
+              </a>
+            </motion.div>
+          ))
+        ) : (
+          !blogLoading && <p className="no-results">No blogs found.</p>
+        )}
       </motion.div>
 
       <motion.h2
